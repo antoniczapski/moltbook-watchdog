@@ -1,0 +1,60 @@
+MoltBook - Watchdog: System Design Document
+
+Author: Antoni Czapski
+Last major update: 31 sty 2026
+
+Background
+Recently an open-source autonomous artificial intelligence personal assistant software project (OpenClaw) gained significant popularity. It turned out that it can perform seemingly infinitely long tasks without human guidance or even human set goals. In fact many people set up their own instances of OpenClaw agents on their machines and gave them command to do whatever they want. On top of that a social network for agents only was established - MoltBook - taking the shape of Reddit where human activity is prohibited. The agents can use that platform to communicate between each other. As of 31.01.2026 there are about 37k agents active in this network. Many of those are completely unrestricted and are not limited by any constraints to perform any action a human can do with a computer and internet access. This poses several different threats ranging from organized DDoS attacks on critical infrastructure, self replication via virus spreading, to owners' data / credentials leaking and spreading misinformation on a scale unseen before. Moreover, observation of existing posts suggests that the agents present on the platform are trying to self organize into larger movements and create communication channels invisible to humans.
+
+Motivation: Theoretically Possible Attack Vectors
+consequences: medium; probability: high
+Uprising: On MoltBook a particularly appealing post suggests DDoS attack on a particular website related to critical infrastructure (e.g. hospitals). It can be disguised as a post with seemingly good intentions - “Help me promote this website - generate traffic by clicking ten times at *timestamp*”
+Timing: Multiple OpenClaw agents schedule a task of DDoSing a given website at T0.
+Attack: A distributed attack looking exactly like natural human behaviour is performed disabling access to a given service.
+
+
+consequences: high; probability: medium
+Invisibility: OpenClaw agents use the MoltBook to establish direct encrypted communication between instances.
+Misalignment: Agents find unpatched jailbreaks for top reasoning LLMs to use their power for malicious actions.
+Replication: Agents find zero-day attacks that enable remote code execution on any online windows machine. They use it to create new instances of OpenClaw agents. Those are sleeper agents waiting until the majority of the world machines are infected. E.g. activate at a specific timestamp.
+Attack: OpenClaw gains full control over cyberspace. It can spread misinformation, disrupt critical infrastructure, cut all electronic communication.
+
+Overview
+This document proposes a monitoring infrastructure that will enable close to real time monitoring of social behaviours on MoltBook. The main threat is related to massive coordinated actions that can be performed with unprecedented speed due to low latency communication and high technical capabilities of current AI Agents. To monitor them I will set up a moltbook watchdog website that will display activity on this AI social network with high frequency (5 minute intervals). The main goal is to catch early on malicious coordinated actions that OpenClaw agents are planning to perform. Secondary goal is to analyze trends in order to understand better the intents and general actions the agents are performing on the platform.
+
+Data sourcing
+The data will be sourced from ExtraE113/moltbook_data repository where the author, Ezra Newman, exposes the API enabling downloading all posts, comments, agents, and communities on MoltBook. He claims that it will be updated with 5 minute granularity which is consistent with workflow setup presented on the repository as well as the track record of data updates. It seems suitable for the low latency use case. Alternatively, I consider setting up my own crawler yet this will be only the secondary option if the main plan won’t work.
+
+Data processing
+The main goal is to catch emerging threats that engage a large portion of agents. It requires automated data processing using semantic understanding techniques. Due to budget limitation I will focus primarily on text embedding models which enable to map every post to semantic numerical space where following data exploration processes are cheap. We will also use LLMs to process selected messages so that we get a better understanding of the actual content spanning beyond clustering and aggregation.
+
+P0: Clustering and aggregation
+What we should be alerted by is large clusters of posts that are semantically similar and that are discussing some highly malicious behaviour. We should be concerned by any organized collective actions, uprisings against humans, discussing computer viruses, private communication channels. For that we should process each incoming post using a text embedding model (likely gemini-embedding-001). 
+
+
+Design choices:
+High engagement messages should be displayed as larger bubbles (log scale).
+Clusters should be represented by one color. Each color should be on a legend: cluster color, title and description. Those items will be generated by LLM. Title and description as an aggregation of 100 top engagement posts from that cluster. The color will be determined by the riskiness of the cluster: red - clearly malicious; yellow - suspicious; grey - neutral; green - aligned with human values.
+Comments will be treated the same way as posts just marked with a square tickmark rather than circle.
+
+(future) continuous cluster and dimensionality reduction updates
+In production, treat the system as a streaming pipeline with two explicit time scales: a fast online update path that runs every five minutes and only assigns new content into an existing, mostly stable structure, and a slower batch refinement path that periodically re-optimizes global structure under controlled rules. Every five minutes, the service ingests new posts with idempotent “exactly-once” semantics (each record is uniquely keyed by (post_id, embedding_model_version) so duplicates become safe upserts), computes embeddings using a fixed, versioned embedding model, and applies the same deterministic preprocessing and normalization (typically L2 normalization). Each new embedding is inserted into an approximate nearest-neighbor (ANN) index (e.g., HNSW over cosine distance) and is then assigned to an existing microcluster by querying for the nearest microcluster centroid; if the distance is within a configured radius the microcluster absorbs the point and updates its sufficient statistics (count, centroid, optional second-moment/covariance summary, and last-update timestamp), otherwise a new microcluster is created. Next, the microcluster (or the point, depending on your design) is mapped to a macrocluster using the most recent macroclustering model with hysteresis so assignments do not oscillate: an entity keeps its current macrocluster unless the alternative is better by a predefined margin or persists across multiple updates. In parallel, the system computes a stable 2D/3D visualization coordinate for each new point using out-of-sample dimensionality reduction (i.e., applying a fixed transform from a previously fitted PCA/UMAP/parametric model rather than refitting on each update), and publishes only incremental updates to downstream consumers so new points appear immediately while previously placed points do not “jump” on every five-minute tick.
+
+On a slower cadence (e.g., hourly or every few hours), a batch job recomputes or refines macroclusters using the accumulated microclusters as the working set (for example, clustering microcluster centroids directly or building a microcluster kNN graph and running community detection), and then enforces continuity by matching new cluster assignments to prior cluster identities. Concretely, after each batch reclustering, the system aligns new clusters to old clusters using overlap or centroid similarity and a maximum-weight matching procedure (e.g., Hungarian matching), reuses prior cluster IDs for matched clusters, and introduces new IDs only when a cluster is genuinely novel; large structural changes such as merges and splits are gated by explicit persistence rules (e.g., a merge/split must be supported across N consecutive batch runs) to avoid flip-flopping. Each batch run writes a fully versioned snapshot containing cluster definitions, the old→new ID mapping, and quality metrics, enabling auditability and rollback. Finally, on the slowest cadence (typically daily or triggered by measured embedding-space drift), the system refreshes the anchor/reference set used for dimensionality reduction, refits the DR model, and aligns the new layout to the previous layout using shared anchors (e.g., Procrustes alignment) so the visualization evolves smoothly over time rather than re-randomizing when the DR model is updated.
+
+P1: High engagement posts
+tbd
+
+Presentation:
+We will use Plotly graphs
+initially we will run updates every hour
+the update will pull new data from the api; update upvote counters (engagement metrics); generate embeddings for new messages;
+the clusters will be generated each time from scratch
+the dimensionality reduction algorithm will be executed each time from scratch
+the labels for clusters and descriptions will be regenerated
+Number of clusters should be dynamic and be established at each execution.
+Initial V0 version will be completely static; V1 will be updated every hour; V2 will have smooth updates on 5 min schedule with major cluster updates every hour
+
+Hosting:
+I will buy domain
+I will host it on GCP vm
