@@ -36,8 +36,8 @@ print('\n📊 Preparing embedding matrix...')
 embeddings = get_embedding_matrix(posts_df)
 print(f'  Shape: {embeddings.shape}')
 
-# Clustering
-print('\n🎯 Clustering with kmeans...')
+# Clustering - use auto-selection for optimal k
+print('\n🎯 Clustering with kmeans (auto k)...')
 cluster_labels, cluster_meta = run_clustering(embeddings, algorithm='kmeans')
 posts_df['cluster'] = cluster_labels
 n_clusters = cluster_meta.get('n_clusters')

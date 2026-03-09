@@ -196,7 +196,13 @@ Respond with ONLY valid JSON, no markdown:
                 time.sleep(RETRY_DELAY * (attempt + 2))
                 continue
             else:
-                last_error = f"API error {response.status_code}"
+                # Try to get error details
+                try:
+                    error_body = response.json()
+                    error_msg = error_body.get("error", {}).get("message", "Unknown error")
+                    last_error = f"API error {response.status_code}: {error_msg}"
+                except:
+                    last_error = f"API error {response.status_code}: {response.text[:200]}"
                 
         except requests.exceptions.Timeout:
             last_error = "Request timeout"
